@@ -80,8 +80,142 @@ Essa biblioteca proposta por Jorge Luís Borges é composta por um número infin
 
 A maior parte dos livros não tem qualquer significado. Entretanto, embora improváveis, certos textos resultam em grandes obras, como o Bhagavad Gita. Considerando as afirmações acima e a lista de palavras existentes na língua portuguesa (disponível no arquivo "Dicionario.txt"), responda aos itens a seguir.
 
-**a)** Estime via simulação computacional (*Monte Carlo*) a
-probabilidade de se gerar uma palavra *válida* (isso é, do dicionário) ao sortear ao acaso sequências de 5 letras (todas com a mesma probabilidade). Em seguida, calcule analiticamente tal probabilidade e faça um gráfico indicando se a estimativa obtida se aproxima do valor teórico conforme a amostra aumenta. **Atenção**: utilize somente as letras do alfabeto sem carateres especiais.
+**a)** Estime via simulação computacional (*Monte Carlo*) a probabilidade de se gerar uma palavra *válida* (isso é, do dicionário) ao sortear ao acaso sequências de 5 letras (todas com a mesma probabilidade). Em seguida, calcule analiticamente tal probabilidade e faça um gráfico indicando se a estimativa obtida se aproxima do valor teórico conforme a amostra aumenta. **Atenção**: utilize somente as letras do alfabeto sem carateres especiais.
+
+**Resposta**
+
+Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas palavras de 5 letras existem em nosso dicionario:
+
+```{r}
+word.size = 5
+dictionary = readLines('Dicionario.txt')
+alphabet = c(
+  "a", "b", "c", "d", "e",
+  "f", "g", "h", "i", "j",
+  "k", "l", "m", "n", "o",
+  "p", "q", "r", "s", "t",
+  "u", "v", "w", "x", "y",
+  "z"
+)
+
+possible.words.count = length(alphabet)**word.size
+dictionary.words.count = length(dictionary[nchar(dictionary) == word.size])
+
+in.dict.probability = dictionary.words.count/possible.words.count
+```
+Analiticamente, a probabilidade de uma palavra estar no dicionario e de 0.0004613102.
+
+Definamos agora uma funcao para gerar amostras de palavras
+
+```{r}
+# Definimos a semente para ter resultados reproduziveis]
+set.seed(4891)
+
+generate.word <- function(size) {
+  chars <-sample(alphabet, size, replace=TRUE)
+  paste(chars, collapse="")
+}
+
+# My first approach was to generate a vector of words, like this:
+#
+# word.sample.1 <- function(n, size = 5) {
+#   replicate(n, generate.word(size), simplify = "array")
+# }
+# Yet, it was prohibitively slow. I left a simulation running the entire night
+# and it didn`t finish!
+#
+# Now our samples are generated as a really long vector containing all words
+# concatenated. It is  almost one thousand times faster to generate words
+# this way.
+#
+# When we need thge word , I take the i-th word from this vector with get.word.
+
+get.word.sample <- function(n, size=5) {
+  sample(alphabet, size*n, replace=TRUE)
+}
+
+get.word <- function(i, words, size) {
+  start <- (i-1)*size + 1
+  end <- min(i*size, length(words))
+  if (start <= end)
+    paste(words[start:end], collapse="")
+}
+```
+
+
+
+```{r}
+get.trie <- function(words) {
+  trie = new.env(hash=TRUE)
+  for(word in words) {
+    print(word)
+    add.to.trie(trie, word)
+  }
+  return(trie)
+}
+
+add.to.trie <- function(trie, word, i = 1) {
+  letter <- substr(word, i, i)
+  subtrie <- trie[[letter]]
+  if (is.null(subtrie)) {
+    subtrie <- new.env(hash=TRUE)
+    trie[[letter]] <- subtrie
+  }
+  if (nchar(word) == i) {
+    print('getting here')
+    subtrie[['END']] = TRUE
+    return()
+  }
+    add.to.trie(subtrie, word, i+1)
+}
+
+is.word.in.trie <- function(trie, word, i = 1) {
+  letter <- substr(word, i, i)
+  subtrie <- trie[[letter]]
+  if (is.null(subtrie)) {
+    return(FALSE)
+  }
+  if (i == nchar(word)) {
+    return(!is.null(subtrie[['END']]))
+  }
+  return(is.word.in.trie(subtrie, word, i+1))
+}
+
+a <- get.trie(c('abc', 'abd', 'efg'))
+
+is.word.in.trie(a, 'abc')
+
+is.word.in.dictionary <- function(i, words, size) {
+  word <- get.word(i, words, size)
+  print(c(i, word))
+  get.word(i, words, size) %in% dictionary
+}
+
+
+```
+A probabilidade de se gerar uma palavra do dicionario e baixa, entao vou gerar amostras cujo tamanho aumenta em "blocos" de mil em mil.
+
+```{r}
+sample.block.size = 1000
+sample.blocks = 10
+df = data.frame(sample.size=c(), in.dict=c())
+  
+for (i in 1:sample.blocks) {
+  sample.size = sample.block.size*i
+  sample = get.word.sample(sample.size, word.size)
+  in.dict = 0
+  print(i)
+  df[nrow(df)+1,] = c(
+    sample.size,
+    sum(sapply(1:sample.size, is.word.in.dictionary, words = sample, size=word.size))
+  )
+}
+
+help(sapply)
+```
+
+
+
 
 **b)** Estime a probabilidade da sequência gerada ser um palíndromo (ou
 seja, pode ser lida, indiferentemente, da esquerda para direita ou da
@@ -134,8 +268,11 @@ my.sample <- data.frame(values = my.rcauchy(sample.size, 1))
 ggplot(my.sample, aes(x=values)) + geom_histogram(breaks=seq(-25,25,0.01))
 ```
 
+O grafico de fato tem a forma da funcao de densidade probabilistica
+
 \vspace{.5cm}
 **b)** Uma variável aleatória discreta $X$ tem função massa de probabilidade
+$$
 \begin{eqnarray*}
 p(2)&=&0.2\\
 p(3)&=&0.1\\
@@ -143,10 +280,144 @@ p(5)&=&0.2\\
 p(7)&=&0.2\\
 p(9)&=&0.3
 \end{eqnarray*}
+$$
 
 Use o método de transformação inversa para gerar uma amostra aleatória de tamanho 1000 a partir da distribuição de $X$. Construa uma tabela de frequência relativa e compare as probabilidades empíricas com as teóricas. Repita usando a função *sample* do R.
+
+**Rsposta**
+
+A funcao de densidade acumulada de $X$ e
+
+$$
+F(x) =
+\left\{
+	\begin{array}{ll}
+	  0,2    & \mbox{se } x \le 2 \\
+		0,3  & \mbox{se } 2 \lt x \le 3 \\
+		0,5  & \mbox{se } 3 \lt x \le 5 \\
+		0,7  & \mbox{se } 5 \lt x \le 7  \\
+		1  & \mbox{se } x \gt 7 \\
+	\end{array}
+\right.
+$$
+Logo, a funcao quantil e
+
+$$
+F^{-1}(x) =
+\left\{
+	\begin{array}{ll}
+	  2    & \mbox{se } x \le 0,2 \\
+		3  & \mbox{se } 0,2 \lt x \le 0,3 \\
+		5  & \mbox{se } 0,3 \lt x \le 5 \\
+		7  & \mbox{se } 0,5 \lt x \le 0,7  \\
+		9  & \mbox{se } x \gt 0,7 \\
+	\end{array}
+\right.
+$$
+Em R:
+
+```{r q}
+
+qx.mapper <- function(p) {
+  if (p <= 0.2) {
+   return(2)
+  }
+  if (p <= 0.3) {
+   return(3)
+  }
+  if (p <= 0.5) {
+   return(5)    
+  }
+  if (p <= 0.7) {
+   return(7)
+  }
+  return(9)
+}
+
+qx <- function(p) {
+  return(sapply(p, qx.mapper))
+}
+```
+
+Novamente, podemos fazer um PRNG com essa distribuicao apliando essa funcao a uma variavel aleatoria $U(0, 1)$:
+
+```{r generator}
+rx <- function(n) {
+  return(qx(runif(n)))
+}
+```
+
+A partir disso, geramos nossa amostra de 1000 elements:
+
+
+```{r my sample}
+my.sample.size <- 1000
+
+my.sample = rx(my.sample.size)
+```
+
+Para analisar esses valores, vamos definir uns datagramas
+
+```{r analise}
+values = c(2, 3, 5, 7, 9)
+expectedFrequencies = c(0.2, 0.1, 0.2, 0.2, 0.3)
+
+my.data.frame = data.frame(table(my.sample))
+my.data.frame$expected = expectedFrequencies
+my.data.frame$actual = my.data.frame$Freq/sum(my.data.frame$Freq)
+my.data.frame$differencePercentage = abs(my.data.frame$expected-my.data.frame$actual)*100
+
+my.data.frame
+```
+
+As one can see, the difference between expected and actual frequencies is quite small, around 1%, most often less than thaa.
+
+What if we use `sample()`. Let`s see:
+
+```{r using.sample}
+my.sample2 = sample(values, size=my.sample.size, prob = expectedFrequencies, replace=TRUE)
+
+my.data.frame2 = data.frame(table(my.sample2))
+my.data.frame2$expected = expectedFrequencies
+my.data.frame2$actual = my.data.frame2$Freq/sum(my.data.frame2$Freq)
+my.data.frame2$differencePercentage = abs(my.data.frame2$expected-my.data.frame2$actual)*100
+
+my.data.frame2
+```
+
+Note-se como `sample()` tambem produziu valures proximos dos esperados.
 
 \vspace{.5cm}
 **c)** Escreva uma função que gere amostras da distribuição Normal padrão ($\mu=0, \sigma=1$) usando o método de aceitação e rejeição adotando como função geradora de candidatos, $g(x)$, a distribuição Cauchy padrão (isso é, com $\gamma=1$).
 
+**Resposta**
 
+Para gerar a normal a partir de Cauchy, vamos adotar, inicialmente, 2 como o valor de $c$
+
+```{r cauchy-to-norm}
+c = 2
+my.rnorm <- function(n) {
+  y = rcauchy(n, 0, 1)
+  u = runif(n)
+  accepted = y[u < dnorm(y)/(c*dcauchy(y))]
+  rejected.count = n - length(accepted)
+  if (rejected.count > 0) {
+    # Fazemos uma chamada recursiva para garantir o numero
+    # requerido de valores na amostra. Podemos deixar isso
+    # mais eficiente gerando mais numeros do que o solicitado
+    # mas, por ora, esta abordagem funciona.
+    result = c(accepted, my.rnorm(rejected.count)) 
+  } else {
+    result = accepted
+  }
+  return(result)
+}
+```
+
+Para verificar, vamos plotar a densidade de nosa funcao junto com o grafico de `dnorm`:
+
+```{r plot our rnorm}
+ggplot(data.frame(values=my.rnorm(100000)), aes(x=values)) + 
+  geom_density(alpha=0.25) + geom_function(fun=dnorm, color="red")
+
+```
