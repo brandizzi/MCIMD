@@ -65,7 +65,6 @@ knitr::opts_chunk$set(echo = TRUE, cache=T, message=F, warning=F, error=F)
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load("gapminder", "tidyverse", "microbenchmark", "stringi")
 options(scipen=0)
-library("tictoc")
 ```
 
 \newpage
@@ -91,7 +90,6 @@ Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas destas estão 
 word.size = 5
 # Note que "normalizamos" o dicionário usando apenas letras minúsculas
 # e removendo palavras repetidas.
-tic("test")
 dictionary = unique(sapply(readLines('Dicionario.txt'), FUN=tolower))
 
 possible.words.count = length(letters)**word.size
@@ -99,9 +97,6 @@ dictionary.words.count = length(dictionary[nchar(dictionary) == word.size])
 
 in.dict.probability = dictionary.words.count/possible.words.count
 in.dict.probability
-toc(log=FALSE)
-message('oh')
-
 ```
 Analiticamente, a probabilidade de uma palavra estar no dicionário e de 0.0004567653.
 
