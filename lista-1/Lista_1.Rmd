@@ -156,9 +156,8 @@ is.word.in.trie <- function(trie, word, i = 1) {
 is.word.in.dictionary <- function(i, words, size) {
   is.word.in.trie(dictionary.trie, get.word.from.sample(i, words, size))
 }
-tic("dic")
+
 dictionary.trie = get.trie(dictionary)
-toc()
 ```
 Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar duzentas amostras e calcular a probabilidade de as palavras serem válidas: 
 
