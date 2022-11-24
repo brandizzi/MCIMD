@@ -1,12 +1,12 @@
 ---
-title: ''
-author: ''
-date: ''
+title: 'Lista de Exercícios 1 de MCIMD 2022/02'
+author: 'Adam Brandizzi <brandizzi@gmail.com>'
+date: '2022-11-24'
 output:
+  pdf_document: null
+  fig_crop: no
   html_document:
     df_print: paged
-  fig_crop: no
-  pdf_document: null
 subtitle: ''
 highlight: tango
 number_sections: no
@@ -65,6 +65,7 @@ knitr::opts_chunk$set(echo = TRUE, cache=T, message=F, warning=F, error=F)
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load("gapminder", "tidyverse", "microbenchmark", "stringi")
 options(scipen=0)
+library("tictoc")
 ```
 
 \newpage
@@ -84,57 +85,37 @@ A maior parte dos livros não tem qualquer significado. Entretanto, embora impro
 
 **Resposta**
 
-Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas palavras de 5 letras existem em nosso dicionario:
+Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas destas estão em nosso dicionário:
 
-```{r}
+```{r message=FALSE, label="Proabilidade de uma palavra de 5 letras aleatoria estar no dicionário"}
 word.size = 5
-dictionary = readLines('Dicionario.txt')
-alphabet = c(
-  "a", "b", "c", "d", "e",
-  "f", "g", "h", "i", "j",
-  "k", "l", "m", "n", "o",
-  "p", "q", "r", "s", "t",
-  "u", "v", "w", "x", "y",
-  "z"
-)
+# Note que "normalizamos" o dicionário usando apenas letras minúsculas
+# e removendo palavras repetidas.
+tic("test")
+dictionary = unique(sapply(readLines('Dicionario.txt'), FUN=tolower))
 
-possible.words.count = length(alphabet)**word.size
+possible.words.count = length(letters)**word.size
 dictionary.words.count = length(dictionary[nchar(dictionary) == word.size])
 
 in.dict.probability = dictionary.words.count/possible.words.count
+in.dict.probability
+toc(log=FALSE)
+message('oh')
+
 ```
-Analiticamente, a probabilidade de uma palavra estar no dicionario e de 0.0004613102.
+Analiticamente, a probabilidade de uma palavra estar no dicionário e de 0.0004567653.
 
-Definamos agora uma funcao para gerar amostras de palavras
+Definamos agora uma função para gerar amostras de palavras. Originalmente, fizemos uma funcao que retornava a string aleatoria, mas isso se provou muito lento. Agora, nossas amostras são na forma de um longo array de caracteres contendo todas as palavras. Quando precisamos da $i$-ésima palavra, usamos a função `get.word.from.sample()` para extraí-la do array.
 
-```{r}
-# Definimos a semente para ter resultados reproduziveis]
+```{r Gerador de palavras aleatórias}
+# Definimos a semente para ter resultados reproduzíveis
 set.seed(4891)
 
-generate.word <- function(size) {
-  chars <-sample(alphabet, size, replace=TRUE)
-  paste(chars, collapse="")
-}
-
-# My first approach was to generate a vector of words, like this:
-#
-# word.sample.1 <- function(n, size = 5) {
-#   replicate(n, generate.word(size), simplify = "array")
-# }
-# Yet, it was prohibitively slow. I left a simulation running the entire night
-# and it didn`t finish!
-#
-# Now our samples are generated as a really long vector containing all words
-# concatenated. It is  almost one thousand times faster to generate words
-# this way.
-#
-# When we need thge word , I take the i-th word from this vector with get.word.
-
 get.word.sample <- function(n, size=5) {
-  sample(alphabet, size*n, replace=TRUE)
+  sample(letters, size*n, replace=TRUE)
 }
 
-get.word <- function(i, words, size) {
+get.word.from.sample <- function(i, words, size) {
   start <- (i-1)*size + 1
   end <- min(i*size, length(words))
   if (start <= end)
@@ -142,13 +123,12 @@ get.word <- function(i, words, size) {
 }
 ```
 
+Consultar se uma palavra estava no dicionaro com `%in%` tambem foi inviavelmente lento. Por isso, carreguei as palavras do dicionário em uma estrutura de dados mais eficiente para consultas:
 
-
-```{r}
+```{r Estrutura de dados para consultas mais rápidas em dicionário}
 get.trie <- function(words) {
   trie = new.env(hash=TRUE)
   for(word in words) {
-    print(word)
     add.to.trie(trie, word)
   }
   return(trie)
@@ -162,7 +142,6 @@ add.to.trie <- function(trie, word, i = 1) {
     trie[[letter]] <- subtrie
   }
   if (nchar(word) == i) {
-    print('getting here')
     subtrie[['END']] = TRUE
     return()
   }
@@ -181,53 +160,160 @@ is.word.in.trie <- function(trie, word, i = 1) {
   return(is.word.in.trie(subtrie, word, i+1))
 }
 
-a <- get.trie(c('abc', 'abd', 'efg'))
-
-is.word.in.trie(a, 'abc')
-
 is.word.in.dictionary <- function(i, words, size) {
-  word <- get.word(i, words, size)
-  print(c(i, word))
-  get.word(i, words, size) %in% dictionary
+  is.word.in.trie(dictionary.trie, get.word.from.sample(i, words, size))
 }
-
-
+tic("dic")
+dictionary.trie = get.trie(dictionary)
+toc()
 ```
-A probabilidade de se gerar uma palavra do dicionario e baixa, entao vou gerar amostras cujo tamanho aumenta em "blocos" de mil em mil.
+Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar mil amostras e calcular a probabilidade de as palavras serem válidas: 
 
 ```{r}
 sample.block.size = 1000
-sample.blocks = 10
-df = data.frame(sample.size=c(), in.dict=c())
-  
+sample.blocks = 1000
+word.in.dict.data.frame = data.frame(sample.size=integer(), in.dict=integer(), probability=double())
 for (i in 1:sample.blocks) {
   sample.size = sample.block.size*i
   sample = get.word.sample(sample.size, word.size)
-  in.dict = 0
-  print(i)
-  df[nrow(df)+1,] = c(
+  words.in.dict.count = sum(sapply(1:sample.size, is.word.in.dictionary, words = sample, size=word.size))
+  row <- c(
     sample.size,
-    sum(sapply(1:sample.size, is.word.in.dictionary, words = sample, size=word.size))
+    words.in.dict.count,
+    words.in.dict.count / sample.size
   )
+  word.in.dict.data.frame[nrow(word.in.dict.data.frame)+1,] <- row 
 }
 
-help(sapply)
+ggplot(word.in.dict.data.frame, aes(sample.size, probability)) +
+  geom_point(size=0.5) +
+  geom_smooth() +
+  geom_hline(yintercept = in.dict.probability, color="red")
+
+word.in.dict.data.frame
 ```
 
-
-
+No gráfico, percebe-se que as amostras convrgem para a probabilidade calculada, plotada em vermelho.
 
 **b)** Estime a probabilidade da sequência gerada ser um palíndromo (ou
 seja, pode ser lida, indiferentemente, da esquerda para direita ou da
 direita para esquerda). Compare o resultado com a probabilidade exata, calculada analiticamente.
 
+**Resposta** Num palíndromo de cinco letras, apenas as trÊs primeiras letras sao variáveis idependentes: os valores das quarta e quinta letras sao fixos. Logo, o número de palindromos de cinco letras e $26^3$:
+
+```{r Numeros de possiveis palindromos de cinco letras}
+possible.palindromes.count = 26**3
+palindrome.probability = possible.palindromes.count / possible.words.count
+palindrome.probability
+```
+A probabilidade de um palídromo é, então, de 0.00147929.
+Vamos estimar usando uma simulação com uma amostra com 1 milhão de palavras:
+
+```{r Probabilidade de geracao de palindromo com simulacao}
+
+is.palindrome <- function(words, start) {
+  words[start] == words[start+4] && words[start+1] == words[start+3]
+}
+
+palindrome.sample.size = 10000000
+palindrome.word.sample = get.word.sample(palindrome.sample.size, word.size)
+palindrome.count = sum(sapply(1:sample.size, is.palindrome, words=palindrome.word.sample))
+palindrome.data.frame = data.frame(Analytical=palindrome.probability, Estimated=palindrome.count/palindrome.sample.size)
+palindrome.data.frame$Percent = abs(palindrome.data.frame$Analytical-df$Estimated)/palindrome.data.frame$Analytical*100
+palindrome.data.frame
+```
+
+A diferenca entre o estimado e o analitico entao roda entre 2% e 3%
+
 **c)** Construa um gerador que alterne entre consoantes e vogais (se uma
 letra for uma vogal, a próxima será uma consoante e vice-versa). Qual a
 probabilidade de gerar uma palavra válida com este novo gerador?
 
+**Resposta** Definamos "palavras alternadas" como palavras em que consoantes e vogais se alternam. Aqui temos um gerador de palavras neste formato:
+
+```{r Gerador que alterne consoantes e vogais} 
+vowels <- c('a', 'e', 'i', 'o', 'u', 'y')
+consonants <- letters[!(letters %in% vowels)]
+letter.arrays <- list(vowels, consonants)
+
+get.alternate.word <- function(size) {
+  if (size == 0)
+    return("")
+  r <- sample(0:1, 1)
+  random.word <- character(size)
+  for (i in 1:size) {
+    random.word[i] <- sample(letter.arrays[[(i+r) %% 2 + 1]], 1)
+  }
+  paste(random.word, collapse="")
+}
+```
+Antes de estimarmos a probabilidade, porem, vamos calcular analiticamente a probabilidade de uma palavra alternada estar no dicionaro. Existem, ao total, $5^3\times21^2 + 5^2\times21^3$ palavras aternadas. Basta contarmos quantas destas estao no dicionario e dividir pelo total de possiveis para obter a probabilidade:
+
+```{r Contando quantas palavras alternadas existem (independente de serem validas segundo o dicionario)}
+total.alternate.words = 5**3 * 21**2 + 5**2 * 21**3
+
+is.alternate.word <- function(word, size = 5) {
+  if (nchar(word) != size)
+    return(FALSE)
+  odd.letters <- substring(word, c(1, 3, 5), c(1, 3, 5))
+  even.letters <- substring(word, c(2, 4), c(2, 4))
+  (all(odd.letters %in% vowels) && all(even.letters %in% consonants)) ||
+    (all(odd.letters %in% consonants) && all(even.letters %in% vowels)) 
+}
+is.alternate.word("abaca")
+alternate.words.in.dict.count <- sum(sapply(dictionary, is.alternate.word, simplify = TRUE))
+alternate.words.probability <- alternate.words.in.dict.count / total.alternate.words
+alternate.words.probability
+```
+Agora, usemos nosso gerador para estimar as probabilidades:
+
+```{r Estimando probabilidade de uma palavra com letras alternadas estar do dicionario}
+sample.size = 1000000
+word.sample = replicate(sample.size, {get.alternate.word(word.size)})
+
+sample.alternate.words.in.dict.count <- sum(sapply(word.sample, is.word.in.trie, trie=dictionary.trie))
+alternate.data.frame = data.frame(Analytical=alternate.words.probability, Estimated=sample.alternate.words.in.dict.count/sample.size)
+alternate.data.frame$Percent = abs(alternate.data.frame$Analytical-alternate.data.frame$Estimated)/alternate.data.frame$Analytical*100
+alternate.data.frame
+```
+
+
 **d)** Considere um processo gerador de sequências de 5 caracteres no qual cada letra é sorteada com probabilidade proporcional à sua respectiva frequência na língua portuguesa (veja essa [página](https://pt.wikipedia.org/wiki/Frequ%C3%AAncia_de_letras?wprov=sfla1)).
 Suponha que esse processo gerou uma sequência com ao menos um "a". Neste caso, estime a probabilidade dessa sequência ser uma palavra válida. **Dica**: Use a função `sample` e edite o parâmetro `prob`. **Para pensar**: Você consegue calcular essa probabilidade analiticamente? (Não precisa responder.)
 
+**Resposta** Aqui, temos um vetor com o a frequencia de cada letra na lingua portuguesa:
+
+```{r Gerador de palavras que usa frequencia de letras no idioma}
+portugese.letter.frequency = c(
+  14.63, 1.04, 3.88, 4.99, 12.57,
+  1.02,  1.30, 1.28, 6.18, 0.40,
+  0.02,  2.78, 4.74, 5.05, 10.73,
+  2.52,  1.20, 6.53, 7.81, 4.34,
+  4.63,  1.67, 0.01, 0.21, 0.01,
+  0.47
+)
+
+get.weighted.word <- function(size = 5) {
+  word.letters <- sample(letters, size, replace = TRUE, prob = portugese.letter.frequency)
+  paste(word.letters, collapse="")
+}
+```
+Podemos gerar uma amostra a partir deste vetor, e extrair todas as palavras com a letra "a" para posterior investigação:
+
+```{r Gerando uma amostra e extraindo apenas as palavras contendo a letra "a"}
+sample.size <- 100000
+word.sample <- replicate(sample.size, {get.weighted.word()})
+
+words.with.a <- word.sample[grepl("a", word.sample, fixed=TRUE)]
+```
+
+Agora, basta procurar quais palavras estao no dicionário, e dividir o tamanho desse resultado pelo total de palavras com "a" geradas:
+
+```{r Quantas palavras com "a" estão no dicionário?}
+words.with.a.in.dict.count <- sum(sapply(words.with.a, is.word.in.trie, trie=dictionary.trie))
+words.with.a.in.dict.probability <- words.with.a.in.dict.count / length(words.with.a)
+words.with.a.in.dict.probability
+```
 
 ## **Questão 2**
 
@@ -237,14 +323,12 @@ Suponha que esse processo gerou uma sequência com ao menos um "a". Neste caso, 
 $$f(x)=\frac{1}{\pi \gamma (1 + (x/\gamma)^2)}.$$ 
 **Dica**: Veja essa [página](https://en.wikipedia.org/wiki/Cauchy_distribution).
 
-**Resposta**
-
-Para gerar uma amostra da distribuição Cauchy via transofrada inversa, precisamos da função quantil da distribuição. De acordo com a [Wikipedia](https://en.wikipedia.org/wiki/Cauchy_distribution), a função quantil é
+**Resposta** Para gerar uma amostra da distribuição Cauchy via transformada inversa, precisamos da função quantil da distribuição. De acordo com a [Wikipedia](https://en.wikipedia.org/wiki/Cauchy_distribution), a função quantil é
 
 $$ q(p) = \gamma \tan(\pi (p - {1 \over 2}))$$
 Essa pode ser definida assim:
 
-```{r my.qcauchy}
+```{r Definindo uma função quantil para distribuição Cauchy}
 my.qcauchy = function(p, gamma) {
   return(gamma * tan(pi*(p - 1/2)))
 }
@@ -254,21 +338,23 @@ my.qcauchy = function(p, gamma) {
 
 Dada a escala $gamma$ e o tamanho desejado da amostra, $n$, nossa funcao deve gerar $n$ valores distribuidos como $U(0,1)$ e aplicar nossa quantil nessses valores:
 
-```{r my.rcauchy} 
+```{r Definindo um gerador com distribuição de Cauchy} 
 my.rcauchy <- function(n, gamma) {
   return(my.qcauchy(runif(n), gamma))
 }
 ```
 
-Geremos uma amostra com mossa funcao, e plotemos:
+Geremos uma amostra com mossa função, e plotemos a densidade dos resultados:
 
-```{r amostra-my.rcauchy}
-sample.size = 1000000
+```{r Gerando e plotando uma amostra}
+sample.size = 10000000
 my.sample <- data.frame(values = my.rcauchy(sample.size, 1))
-ggplot(my.sample, aes(x=values)) + geom_histogram(breaks=seq(-25,25,0.01))
+ggplot(my.sample, aes(x=values)) +
+  xlim(-25, 25) + geom_density() +
+  geom_function(fun = dcauchy, color="red")
 ```
 
-O grafico de fato tem a forma da funcao de densidade probabilistica
+Comparando com a função de densidade `dcauchy()` já disponível em R, vemos que gráfico de fato tem a forma da função de densidade probabilistica de Cauchy.
 
 \vspace{.5cm}
 **b)** Uma variável aleatória discreta $X$ tem função massa de probabilidade
@@ -284,9 +370,7 @@ $$
 
 Use o método de transformação inversa para gerar uma amostra aleatória de tamanho 1000 a partir da distribuição de $X$. Construa uma tabela de frequência relativa e compare as probabilidades empíricas com as teóricas. Repita usando a função *sample* do R.
 
-**Rsposta**
-
-A funcao de densidade acumulada de $X$ e
+**Rsposta** A função de densidade acumulada de $X$ e
 
 $$
 F(x) =
@@ -300,7 +384,7 @@ F(x) =
 	\end{array}
 \right.
 $$
-Logo, a funcao quantil e
+Logo, a função quantil é
 
 $$
 F^{-1}(x) =
@@ -316,7 +400,7 @@ F^{-1}(x) =
 $$
 Em R:
 
-```{r q}
+```{r Função quantil da distribuição dada}
 
 qx.mapper <- function(p) {
   if (p <= 0.2) {
@@ -339,42 +423,42 @@ qx <- function(p) {
 }
 ```
 
-Novamente, podemos fazer um PRNG com essa distribuicao apliando essa funcao a uma variavel aleatoria $U(0, 1)$:
+Novamente, podemos fazer um PRNG aplicando essa função a uma variável aleatória  $U(0, 1)$:
 
-```{r generator}
+```{r Gerador para distribuição dada}
 rx <- function(n) {
   return(qx(runif(n)))
 }
 ```
 
-A partir disso, geramos nossa amostra de 1000 elements:
+A partir disso, geramos nossa amostra de cem mil elements:
 
 
-```{r my sample}
-my.sample.size <- 1000
+```{r Gerando uma amostra da distribuição}
+my.sample.size <- 100000
 
 my.sample = rx(my.sample.size)
 ```
 
-Para analisar esses valores, vamos definir uns datagramas
+Para analisar esses valores, vamos definir uns datagramas:
 
-```{r analise}
+```{r Comparando amostra com probabilidades esperadas}
 values = c(2, 3, 5, 7, 9)
 expectedFrequencies = c(0.2, 0.1, 0.2, 0.2, 0.3)
 
 my.data.frame = data.frame(table(my.sample))
 my.data.frame$expected = expectedFrequencies
 my.data.frame$actual = my.data.frame$Freq/sum(my.data.frame$Freq)
-my.data.frame$differencePercentage = abs(my.data.frame$expected-my.data.frame$actual)*100
+my.data.frame$differencePercentage = abs(my.data.frame$expected-my.data.frame$actual)/my.data.frame$expected*100
 
 my.data.frame
 ```
 
-As one can see, the difference between expected and actual frequencies is quite small, around 1%, most often less than thaa.
+Como podemos ver, a diferença é frequentemente menor que 1%.
 
-What if we use `sample()`. Let`s see:
+Agora, façamos o mesmo utilizando `sample()`:
 
-```{r using.sample}
+```{r Gerando amostra através de função `sample()`}
 my.sample2 = sample(values, size=my.sample.size, prob = expectedFrequencies, replace=TRUE)
 
 my.data.frame2 = data.frame(table(my.sample2))
@@ -385,16 +469,14 @@ my.data.frame2$differencePercentage = abs(my.data.frame2$expected-my.data.frame2
 my.data.frame2
 ```
 
-Note-se como `sample()` tambem produziu valures proximos dos esperados.
+Note-se como `sample()` tambem produziu valores proximos dos esperados.
 
 \vspace{.5cm}
 **c)** Escreva uma função que gere amostras da distribuição Normal padrão ($\mu=0, \sigma=1$) usando o método de aceitação e rejeição adotando como função geradora de candidatos, $g(x)$, a distribuição Cauchy padrão (isso é, com $\gamma=1$).
 
-**Resposta**
+**Resposta** Para gerar a normal a partir de Cauchy, vamos adotar, inicialmente, 2 como o valor de $c$
 
-Para gerar a normal a partir de Cauchy, vamos adotar, inicialmente, 2 como o valor de $c$
-
-```{r cauchy-to-norm}
+```{r Gerando números com distribuição normal a partir de distribuição de Cauchy}
 c = 2
 my.rnorm <- function(n) {
   y = rcauchy(n, 0, 1)
@@ -416,8 +498,10 @@ my.rnorm <- function(n) {
 
 Para verificar, vamos plotar a densidade de nosa funcao junto com o grafico de `dnorm`:
 
-```{r plot our rnorm}
+```{r Plotando nossa amostra de distribuição normal, em comparação do função provida por R}
 ggplot(data.frame(values=my.rnorm(100000)), aes(x=values)) + 
   geom_density(alpha=0.25) + geom_function(fun=dnorm, color="red")
 
 ```
+
+As curvas são bem semelhantes, de fato.
