@@ -82,9 +82,7 @@ A maior parte dos livros não tem qualquer significado. Entretanto, embora impro
 
 **a)** Estime via simulação computacional (*Monte Carlo*) a probabilidade de se gerar uma palavra *válida* (isso é, do dicionário) ao sortear ao acaso sequências de 5 letras (todas com a mesma probabilidade). Em seguida, calcule analiticamente tal probabilidade e faça um gráfico indicando se a estimativa obtida se aproxima do valor teórico conforme a amostra aumenta. **Atenção**: utilize somente as letras do alfabeto sem carateres especiais.
 
-**Resposta**
-
-Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas destas estão em nosso dicionário:
+**Resposta** Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas destas estão em nosso dicionário:
 
 ```{r message=FALSE, label="Proabilidade de uma palavra de 5 letras aleatoria estar no dicionário"}
 word.size = 5
@@ -162,11 +160,11 @@ tic("dic")
 dictionary.trie = get.trie(dictionary)
 toc()
 ```
-Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar mil amostras e calcular a probabilidade de as palavras serem válidas: 
+Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar duzentas amostras e calcular a probabilidade de as palavras serem válidas: 
 
 ```{r}
 sample.block.size = 1000
-sample.blocks = 1000
+sample.blocks = 200
 word.in.dict.data.frame = data.frame(sample.size=integer(), in.dict=integer(), probability=double())
 for (i in 1:sample.blocks) {
   sample.size = sample.block.size*i
@@ -184,8 +182,6 @@ ggplot(word.in.dict.data.frame, aes(sample.size, probability)) +
   geom_point(size=0.5) +
   geom_smooth() +
   geom_hline(yintercept = in.dict.probability, color="red")
-
-word.in.dict.data.frame
 ```
 
 No gráfico, percebe-se que as amostras convrgem para a probabilidade calculada, plotada em vermelho.
