@@ -85,7 +85,7 @@ A maior parte dos livros não tem qualquer significado. Entretanto, embora impro
 **Resposta** Existem $26^5$ "palavras" possiveis com 5 letras. Vejamos quantas destas estão em nosso dicionário:
 
 ```{r message=FALSE, label="Proabilidade de uma palavra de 5 letras aleatoria estar no dicionário"}
-word.size = 5
+word.size <- 5
 # Note que "normalizamos" o dicionário usando apenas letras minúsculas
 # e removendo palavras repetidas.
 dictionary = unique(sapply(readLines('Dicionario.txt'), FUN=tolower))
@@ -141,7 +141,7 @@ add.to.trie <- function(trie, word, i = 1) {
     add.to.trie(subtrie, word, i+1)
 }
 
-is.word.in.trie <- function(trie, word, i = 1) {
+is.in.trie <- function(trie, word, i = 1) {
   letter <- substr(word, i, i)
   subtrie <- trie[[letter]]
   if (is.null(subtrie)) {
@@ -150,34 +150,40 @@ is.word.in.trie <- function(trie, word, i = 1) {
   if (i == nchar(word)) {
     return(!is.null(subtrie[['END']]))
   }
-  return(is.word.in.trie(subtrie, word, i+1))
+  return(is.in.trie(subtrie, word, i+1))
 }
 
-is.word.in.dictionary <- function(i, words, size) {
-  is.word.in.trie(dictionary.trie, get.word.from.sample(i, words, size))
+is.in.dictionary <- function(i, words, size) {
+  is.in.trie(dictionary.trie, get.word.from.sample(i, words, size))
 }
 
-dictionary.trie = get.trie(dictionary)
+dictionary.trie <- get.trie(dictionary)
 ```
-Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar duzentas amostras e calcular a probabilidade de as palavras serem válidas: 
+Como a probabilidade de uma palavra do dicionário é baixa, vou gerar amostras que crescem em "blocos" de mil em mil. Vamos gerar cem amostras e calcular a probabilidade de as palavras serem válidas: 
 
 ```{r}
-sample.block.size = 1000
-sample.blocks = 200
-word.in.dict.data.frame = data.frame(sample.size=integer(), in.dict=integer(), probability=double())
+sample.block.size <- 1000
+sample.blocks <- 100
+df <- data.frame(
+  sample.size=integer(),
+  in.dict=integer(),
+  probability=double()
+)
 for (i in 1:sample.blocks) {
-  sample.size = sample.block.size*i
-  sample = get.word.sample(sample.size, word.size)
-  words.in.dict.count = sum(sapply(1:sample.size, is.word.in.dictionary, words = sample, size=word.size))
-  row <- c(
-    sample.size,
-    words.in.dict.count,
-    words.in.dict.count / sample.size
+  sample.size <- sample.block.size*i
+  word.sample = get.word.sample(sample.size, word.size)
+  words.in.dict <- sapply(
+    1:sample.size, 
+    is.in.dictionary,
+    words = word.sample,
+    size = word.size
   )
-  word.in.dict.data.frame[nrow(word.in.dict.data.frame)+1,] <- row 
+  count <- sum(words.in.dict)
+  row <- c(sample.size, count, count / sample.size)
+  df[nrow(df)+1,] <- row 
 }
 
-ggplot(word.in.dict.data.frame, aes(sample.size, probability)) +
+ggplot(df, aes(sample.size, probability)) +
   geom_point(size=0.5) +
   geom_smooth() +
   geom_hline(yintercept = in.dict.probability, color="red")
@@ -192,25 +198,24 @@ direita para esquerda). Compare o resultado com a probabilidade exata, calculada
 **Resposta** Num palíndromo de cinco letras, apenas as trÊs primeiras letras sao variáveis idependentes: os valores das quarta e quinta letras sao fixos. Logo, o número de palindromos de cinco letras e $26^3$:
 
 ```{r Numeros de possiveis palindromos de cinco letras}
-possible.palindromes.count = 26**3
-palindrome.probability = possible.palindromes.count / possible.words.count
-palindrome.probability
+possible.palindromes.count <- 26**3
+probability <- possible.palindromes.count / possible.words.count
+probability
 ```
 A probabilidade de um palídromo é, então, de 0.00147929.
 Vamos estimar usando uma simulação com uma amostra com 1 milhão de palavras:
 
 ```{r Probabilidade de geracao de palindromo com simulacao}
-
 is.palindrome <- function(words, start) {
   words[start] == words[start+4] && words[start+1] == words[start+3]
 }
 
-palindrome.sample.size = 10000000
-palindrome.word.sample = get.word.sample(palindrome.sample.size, word.size)
-palindrome.count = sum(sapply(1:sample.size, is.palindrome, words=palindrome.word.sample))
-palindrome.data.frame = data.frame(Analytical=palindrome.probability, Estimated=palindrome.count/palindrome.sample.size)
-palindrome.data.frame$Percent = abs(palindrome.data.frame$Analytical-df$Estimated)/palindrome.data.frame$Analytical*100
-palindrome.data.frame
+sample.size <- 10000000
+word.sample <- get.word.sample(sample.size, word.size)
+count <- sum(sapply(1:sample.size, is.palindrome, words=word.sample))
+df <- data.frame(Analytical=probability, Estimated=count/sample.size)
+df$Percent <- abs(df$Analytical-df$Estimated)/df$Analytical*100
+df
 ```
 
 A diferenca entre o estimado e o analitico entao roda entre 2% e 3%
@@ -240,7 +245,9 @@ get.alternate.word <- function(size) {
 Antes de estimarmos a probabilidade, porem, vamos calcular analiticamente a probabilidade de uma palavra alternada estar no dicionaro. Existem, ao total, $5^3\times21^2 + 5^2\times21^3$ palavras aternadas. Basta contarmos quantas destas estao no dicionario e dividir pelo total de possiveis para obter a probabilidade:
 
 ```{r Contando quantas palavras alternadas existem (independente de serem validas segundo o dicionario)}
-total.alternate.words = 5**3 * 21**2 + 5**2 * 21**3
+vowels.count = length(vowels)
+consonants.count = length(consonants)
+total.alternate.words <- vowels.count**3 * consonants.count**2 + vowels.count**2 * consonants.count**3
 
 is.alternate.word <- function(word, size = 5) {
   if (nchar(word) != size)
@@ -250,21 +257,22 @@ is.alternate.word <- function(word, size = 5) {
   (all(odd.letters %in% vowels) && all(even.letters %in% consonants)) ||
     (all(odd.letters %in% consonants) && all(even.letters %in% vowels)) 
 }
-is.alternate.word("abaca")
-alternate.words.in.dict.count <- sum(sapply(dictionary, is.alternate.word, simplify = TRUE))
+
+alternate.words.in.dict <- sapply(dictionary, is.alternate.word, simplify = TRUE)
+alternate.words.in.dict.count <- sum(alternate.words.in.dict)
 alternate.words.probability <- alternate.words.in.dict.count / total.alternate.words
 alternate.words.probability
 ```
 Agora, usemos nosso gerador para estimar as probabilidades:
 
 ```{r Estimando probabilidade de uma palavra com letras alternadas estar do dicionario}
-sample.size = 1000000
+sample.size <- 1000000
 word.sample = replicate(sample.size, {get.alternate.word(word.size)})
 
-sample.alternate.words.in.dict.count <- sum(sapply(word.sample, is.word.in.trie, trie=dictionary.trie))
-alternate.data.frame = data.frame(Analytical=alternate.words.probability, Estimated=sample.alternate.words.in.dict.count/sample.size)
-alternate.data.frame$Percent = abs(alternate.data.frame$Analytical-alternate.data.frame$Estimated)/alternate.data.frame$Analytical*100
-alternate.data.frame
+in.dict.count <- sum(sapply(word.sample, is.in.trie, trie=dictionary.trie))
+df <- data.frame(Analytical=alternate.words.probability, Estimated=in.dict.count/sample.size)
+df$Percent <- abs(df$Analytical-df$Estimated)/df$Analytical*100
+df
 ```
 
 
@@ -284,7 +292,9 @@ portugese.letter.frequency = c(
 )
 
 get.weighted.word <- function(size = 5) {
-  word.letters <- sample(letters, size, replace = TRUE, prob = portugese.letter.frequency)
+  word.letters <- sample(
+    letters, size, replace = TRUE, prob = portugese.letter.frequency
+  )
   paste(word.letters, collapse="")
 }
 ```
@@ -300,9 +310,9 @@ words.with.a <- word.sample[grepl("a", word.sample, fixed=TRUE)]
 Agora, basta procurar quais palavras estao no dicionário, e dividir o tamanho desse resultado pelo total de palavras com "a" geradas:
 
 ```{r Quantas palavras com "a" estão no dicionário?}
-words.with.a.in.dict.count <- sum(sapply(words.with.a, is.word.in.trie, trie=dictionary.trie))
-words.with.a.in.dict.probability <- words.with.a.in.dict.count / length(words.with.a)
-words.with.a.in.dict.probability
+count <- sum(sapply(words.with.a, is.in.trie, trie=dictionary.trie))
+probability <- count / length(words.with.a)
+probability
 ```
 
 ## **Questão 2**
@@ -337,7 +347,7 @@ my.rcauchy <- function(n, gamma) {
 Geremos uma amostra com mossa função, e plotemos a densidade dos resultados:
 
 ```{r Gerando e plotando uma amostra}
-sample.size = 10000000
+sample.size <- 10000000
 my.sample <- data.frame(values = my.rcauchy(sample.size, 1))
 ggplot(my.sample, aes(x=values)) +
   xlim(-25, 25) + geom_density() +
@@ -347,8 +357,9 @@ ggplot(my.sample, aes(x=values)) +
 Comparando com a função de densidade `dcauchy()` já disponível em R, vemos que gráfico de fato tem a forma da função de densidade probabilistica de Cauchy.
 
 \vspace{.5cm}
+
 **b)** Uma variável aleatória discreta $X$ tem função massa de probabilidade
-$$
+
 \begin{eqnarray*}
 p(2)&=&0.2\\
 p(3)&=&0.1\\
@@ -356,7 +367,6 @@ p(5)&=&0.2\\
 p(7)&=&0.2\\
 p(9)&=&0.3
 \end{eqnarray*}
-$$
 
 Use o método de transformação inversa para gerar uma amostra aleatória de tamanho 1000 a partir da distribuição de $X$. Construa uma tabela de frequência relativa e compare as probabilidades empíricas com as teóricas. Repita usando a função *sample* do R.
 
@@ -366,11 +376,11 @@ $$
 F(x) =
 \left\{
 	\begin{array}{ll}
-	  0,2    & \mbox{se } x \le 2 \\
-		0,3  & \mbox{se } 2 \lt x \le 3 \\
-		0,5  & \mbox{se } 3 \lt x \le 5 \\
-		0,7  & \mbox{se } 5 \lt x \le 7  \\
-		1  & \mbox{se } x \gt 7 \\
+	  0,2  & \mbox{se } x \le 2 \\
+		0,3  & \mbox{se } 2 < x \le 3 \\
+		0,5  & \mbox{se } 3 < x \le 5 \\
+		0,7  & \mbox{se } 5 < x \le 7  \\
+		1  & \mbox{se } x > 7 \\
 	\end{array}
 \right.
 $$
@@ -381,10 +391,10 @@ F^{-1}(x) =
 \left\{
 	\begin{array}{ll}
 	  2    & \mbox{se } x \le 0,2 \\
-		3  & \mbox{se } 0,2 \lt x \le 0,3 \\
-		5  & \mbox{se } 0,3 \lt x \le 5 \\
-		7  & \mbox{se } 0,5 \lt x \le 0,7  \\
-		9  & \mbox{se } x \gt 0,7 \\
+		3  & \mbox{se } 0,2 < x \le 0,3 \\
+		5  & \mbox{se } 0,3 < x \le 5 \\
+		7  & \mbox{se } 0,5 < x \le 0,7  \\
+		9  & \mbox{se } x >0,7 \\
 	\end{array}
 \right.
 $$
@@ -427,21 +437,21 @@ A partir disso, geramos nossa amostra de cem mil elements:
 ```{r Gerando uma amostra da distribuição}
 my.sample.size <- 100000
 
-my.sample = rx(my.sample.size)
+my.sample <- rx(my.sample.size)
 ```
 
 Para analisar esses valores, vamos definir uns datagramas:
 
 ```{r Comparando amostra com probabilidades esperadas}
-values = c(2, 3, 5, 7, 9)
-expectedFrequencies = c(0.2, 0.1, 0.2, 0.2, 0.3)
+values <- c(2, 3, 5, 7, 9)
+expectedFrequencies <- c(0.2, 0.1, 0.2, 0.2, 0.3)
 
-my.data.frame = data.frame(table(my.sample))
-my.data.frame$expected = expectedFrequencies
-my.data.frame$actual = my.data.frame$Freq/sum(my.data.frame$Freq)
-my.data.frame$differencePercentage = abs(my.data.frame$expected-my.data.frame$actual)/my.data.frame$expected*100
+df <- data.frame(table(my.sample))
+df$expected <- expectedFrequencies
+df$actual <- df$Freq/sum(df$Freq)
+df$differencePercentage <- abs(df$expected-df$actual)/df$expected*100
 
-my.data.frame
+df
 ```
 
 Como podemos ver, a diferença é frequentemente menor que 1%.
@@ -449,14 +459,16 @@ Como podemos ver, a diferença é frequentemente menor que 1%.
 Agora, façamos o mesmo utilizando `sample()`:
 
 ```{r Gerando amostra através de função `sample()`}
-my.sample2 = sample(values, size=my.sample.size, prob = expectedFrequencies, replace=TRUE)
+my.sample2 <- sample(
+  values, size=my.sample.size, prob = expectedFrequencies, replace=TRUE
+)
 
-my.data.frame2 = data.frame(table(my.sample2))
-my.data.frame2$expected = expectedFrequencies
-my.data.frame2$actual = my.data.frame2$Freq/sum(my.data.frame2$Freq)
-my.data.frame2$differencePercentage = abs(my.data.frame2$expected-my.data.frame2$actual)*100
+df2 <- data.frame(table(my.sample2))
+df2$expected <- expectedFrequencies
+df2$actual <- df2$Freq/sum(df2$Freq)
+df2$differencePercentage <- abs(df2$expected-df2$actual)*100
 
-my.data.frame2
+df2
 ```
 
 Note-se como `sample()` tambem produziu valores proximos dos esperados.
@@ -467,20 +479,20 @@ Note-se como `sample()` tambem produziu valores proximos dos esperados.
 **Resposta** Para gerar a normal a partir de Cauchy, vamos adotar, inicialmente, 2 como o valor de $c$
 
 ```{r Gerando números com distribuição normal a partir de distribuição de Cauchy}
-c = 2
+c <- 2
 my.rnorm <- function(n) {
-  y = rcauchy(n, 0, 1)
-  u = runif(n)
-  accepted = y[u < dnorm(y)/(c*dcauchy(y))]
-  rejected.count = n - length(accepted)
+  y <- rcauchy(n, 0, 1)
+  u <- runif(n)
+  accepted <- y[u < dnorm(y)/(c*dcauchy(y))]
+  rejected.count <- n - length(accepted)
   if (rejected.count > 0) {
     # Fazemos uma chamada recursiva para garantir o numero
     # requerido de valores na amostra. Podemos deixar isso
     # mais eficiente gerando mais numeros do que o solicitado
     # mas, por ora, esta abordagem funciona.
-    result = c(accepted, my.rnorm(rejected.count)) 
+    result <- c(accepted, my.rnorm(rejected.count)) 
   } else {
-    result = accepted
+    result <- accepted
   }
   return(result)
 }

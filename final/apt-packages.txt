@@ -1,0 +1,10 @@
+r-base
+build-essential
+libcurl4-openssl-dev 
+zlib1g-dev
+libxml2-dev
+liblapack-dev
+libopenblas-dev
+libgfortran-12-dev
+gfortran
+texlive-latex-extra

@@ -1,0 +1,250 @@
+---
+title: 'Trabalho final de MCIMD 2022/02'
+author: 'Adam Brandizzi <brandizzi@gmail.com>'
+date: '2022-12-26'
+output:
+  pdf_document: null
+  fig_crop: no
+  html_document:
+    df_print: paged
+subtitle: ''
+highlight: tango
+number_sections: no
+fig_caption: yes
+keep_tex: yes
+includes:
+  in_header: Estilo.sty
+classoption: a4paper
+always_allow_html: yes
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{=tex}
+\begin{center}
+{\Large
+  PROGRAMA DE PÓS-GRADUAÇÃO EM COMPUTAÇÃO APLICADA} \\
+\vspace{0.5cm}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=9cm, keepaspectratio]{logo-UnB.eps}
+\end{figure}
+\vskip 1em
+{\large
+  26 de dezembro de  2022}
+\vskip 3em
+{\LARGE
+  \textbf{Trabalho final}} \\
+\vskip 1em
+{\Large
+  Prof. Guilherme Rodrigues} \\
+\vskip 1em
+{\Large
+  Métodos computacionais intensivos para mineração de dados} \\
+\vskip 1em
+\end{center}
+```
+\vskip 5em
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=T, message=F, warning=F, error=F)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load("tidyverse", "queuecomputer", "ggplot2", "abc")
+options(scipen=0)
+require("furrr")
+
+set.seed(4486)
+```
+
+\newpage
+
+Considere uma fila do tipo M/M/2, com tempo entre chegadas distribuído por uma exponencial com parâmetro $\lambda$ e tempo de atendimento por uma exponencial com parâmetro $\mu$. Suponha que uma empresa atenda, no máximo, 200 clientes por dia, e que, em um dado dia, foi registrado tempo médio de espera na fila de duas horas e 30 minutos e comprimento médio da fila de 22 pessoas. Note que como os dados de cada cliente não foram disponibilizados, a verossimilhança não pode ser calculada facilmente. Faça um estudo de simulação para responder as perguntas elencadas a seguir.
+
+<!--
+Duvidas:
+
+* O que e λ e μ?
+
+Enunciado explica.
+
+* No codigo de exemplo abaixo, quais sao lambda e mi?
+
+n <- 200; interarrivals <- rexp(n, .2)
+arrivals <- cumsum(interarrivals) ; service <- rexp(n, .08)
+queue_obj <- queue_step(arrivals, service, 2)
+summary(queue_obj) ; plot(queue_obj)
+
+λ = 0.2
+μ = 0.08
+
+Tarefas
+
+[] Comitar e mandar para github
+[] Confirmar que respondemos à primeira questão
+
+
+
+-->
+
+
+**Questão  1:** Usando Computação Bayesiana Aproximada (ABC), estime a
+distribuição a posteriori para os parâmetros $\lambda$ e $\mu$.
+
+**Resposta:** A melhor função-sumário que temos aqui é a que gera o vetor com tempo médio de espera e comprimento médio da fila. Nesse caso, o valor seria:
+
+```{r Propriedades observadas da fila}
+y.obs <- list(wait.time=150, queue.length=22)
+```
+
+Vamos usar `queuecomputer` para nossa simulação. Nesse caso, nossa função-sumário poderia ser assim:
+
+```{r Função-sumário para resultados de fila}
+queue.summary <- function(queue.obj) 
+  list(
+    wait.time=mean(queue.obj$departures_df$waiting),
+    queue.length=mean(queue.obj$queuelength_df$queuelength)
+  )
+```
+
+Aqui definimos uma distância euclidiana sobre esse sumário:
+
+```{r Função para calcular distância entre sumários de fila}
+distance <- function(qs1, qs2) {
+  sqrt(
+    (qs1$wait.time-qs2$wait.time)^2 + (qs1$queue.length-qs2$queue.length)^2
+  )
+}
+```
+
+Criemos então uma função que gere uma amostra e retorne estas estatísticas:
+
+```{r Função geradora de amostras sumarizadas}
+# Função baseada no código de exemplo do enunciado do trabalho final
+queue.creator <- function(arrivals.count, lambda, mu, servers =  2) {
+  time.between.arrivals <- rexp(arrivals.count, lambda)
+  arrival.times <- cumsum(time.between.arrivals)
+  service.time <- rexp(arrivals.count, mu)
+  queue.obj <- queue_step(arrival.times, service.time, servers)
+  # O tempo entre chegadas será útil ent outras simulações
+  queue.obj$time.between.arrivals <- time.between.arrivals
+  queue.obj
+}
+
+queue.sampler <- function(arrivals.count, lambda, mu, servers =  2) {
+  queue.obj <- queue.creator(arrivals.count, lambda, mu, servers)
+  queue.summary(queue.obj)
+}
+```
+
+Quais valores de $\mu$ e $\lambda$ fazem sentido avaliar? Como há no máximo 200 atendimentos por dia, vou usar o número de minutos no dia dividido por 200 como um valor a priori para momento de chegada e de espera.
+
+```{r Um valor inicial plausível para $\\lambda$}
+time.between.arrivals.0 <- 24*60 / 200
+(lambda.0 <- mu.0 <- 1 / time.between.arrivals.0)
+```
+
+Geremos então amostras com $\lambda \sim U(0, 2\lambda_0)$ e $\mu \sim N(0, 2\mu_0)$. A distribuição unitária, assim como o intervalo utilizado, são escolhas arbitrárias que podemos ajustar.
+Tendo o sumário das amostras em mãos, podemos calcular a distância. Geramos também mais uma coluna, com um valor de "proximidade" variando de 0 a 1, crescendo à medida em que a distância diminui:
+
+```{r Gerando amostras e registrando seus sumários}
+sample.size <- 200
+samples.count <- 100000
+
+mu.lambda.sampler <- function(sample.size, samples.count, mu.max, lambda.max) {
+  lambda <- runif(samples.count, min=0, max=lambda.max)
+  mu <- runif(samples.count, min=0, max=mu.max)
+  results <- future_map2_dfr(lambda, mu, ~queue.sampler(sample.size, .x, .y))
+  results$mu <- mu
+  results$lambda <- lambda
+  results$distance <- as.numeric(map(split(results, 1:nrow(results)), ~distance(., y.obs)))
+  max.distance <- max(results$distance)
+  results$proximity <- 1-results$distance/max.distance
+  results
+}
+
+results.0 <- mu.lambda.sampler(sample.size, samples.count, mu.0*2, lambda.0*2)
+```
+
+Para avaliar, vamos plotar os resultados, tornando os pontos mais transparentes à medida em que a distância é maior. Como geramos muitos pontos, vamos pegar apenas os 10 mil pontos com menor distância: 
+
+```{r}
+plot.distance <- function(results, n = 10000) {
+  smaller.sample <- slice_min(results, order_by=results$distance, n=n)
+  ggplot(smaller.sample, aes(x=mu, y=lambda, alpha=proximity, color=distance)) +
+    scale_color_continuous(low="blue", high="white", trans="log") +
+    scale_alpha(range=c(0,1)) +
+    geom_point(size=0.5)
+}
+plot.distance(results.0)
+```
+
+Notadamente, a distância tende a diminuir à medida que $\lambda$ cresce. Isto parece inidicar que nossos prioris não foram realmente muito úteis. Vamos reamostrar, agora usando valores bem mais amplos para o intervalo de $\lambda$:
+
+```{r Usando um range maior de valores para lambda}
+results.1 <- mu.lambda.sampler(sample.size, samples.count, mu.0*4, lambda.0*20)
+plot.distance(results.1)
+```                                                                                                 
+
+Observando o novo gráfico, nossa suspeita parece não justificada: os pontos mais interessantes estão realmente próximos dos valores iniciais: são os pontos mais escuros, que aparecem mais com $\lambda < 1$ e $\mu < 0.15$. Há mais pontos próximos à medida em que $\lambda$ aumenta, mas esses pontos são menos próximos que os do intervalo acima. Acredito que vale a pena gerar um último sample com esse intervalo mais restrito:
+
+```{r Usando valores mais promissores}
+results.2 <- mu.lambda.sampler(sample.size, samples.count, 0.15, 1)
+plot.distance(results.2)
+```
+De fato, tivemos uma melhora notável, com distâncias bem abaixo de 1:
+
+```{r}
+best.results.count <- 100
+(best.results <- slice_min(results.2, n=best.results.count, order_by=distance))
+```
+Por outro lado, nota-se que no intervalo de confiabilidade de 2,5% a 97,5%, os valores têm uma variação proporcionamente grande:
+
+```{r Intervalos de confiabilidade}
+quantile(best.results$lambda, c(0.025, 0.975))
+quantile(best.results$mu, c(0.025, 0.975))
+```
+
+Isto não é necessariamente um problema, porém: significa que podemos ter filas com comportamento similar para vários valores de $\lambda$ e $\mu$ nesse intervalo (e até fora desse intervalo, como nosso primeiro gráfico indica).
+
+**Questão  2:** Teste a hipótese nula de que o tempo médio de atendimento é
+inferior à metade do tempo médio entre chegadas.
+  
+**Resposta:** Vamos simular algumas utilizando os valores selecionados da seleção anterior. Para cada um dos cem valores selecionados, vamos gerar cem filas
+
+```{r Calculando tempo médio de atendimento e chegada}
+mean.times.simulation.count <- samples.count / best.results.count
+
+queue.mean.times <- function(queue.obj) {
+  list(
+    service.time=mean(queue.obj$departures_df$service),
+    times.between.arrivals=mean(queue.obj$time.between.arrivals)
+  )
+}
+
+simulate.mean.times <- function(samples.count, sample.size, results, servers) {
+  data.frame <- data.frame(
+    service.time=numeric(0),
+    times.between.arrivals=numeric(0)
+  )
+  for (i in 1:samples.count) {
+    for (j in 1:nrow(results)) {
+      result <- results[i,]
+      queue.obj <- queue.creator(sample.size, result$lambda, result$mu, servers)
+      queue.means <- queue.mean.times(queue.obj)
+      data.frame[nrow(data.frame)+1,] <- queue.means
+    }
+  }
+  data.frame
+}
+
+mean.times <- simulate.mean.times(mean.times.simulation.count, sample.size, best.results, 2)
+```
+
+Quantas vezes o tempo médio de atendimento foi menor que metade do tempo médio de chegada? Isso é fácil de calcular:
+
+```{r Contando quantas vezes o tempo médio de atendimento foi menor que o tempo médio de chegada}
+sum(mean.times$service.time < mean.times$times.between.arrivals / 2)
+```
+
+Em nossas dez mil simulações, não houve um caso sequer em que a hipótese nula foi observada. Assim, a hipótese nula é falsa para os valores de $\mu$ e $\lambda$ que selecionamos.
