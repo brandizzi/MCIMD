@@ -80,7 +80,7 @@ summary(queue_obj) ; plot(queue_obj)
 
 Tarefas
 
-[] Comitar e mandar para github
+[x] Comitar e mandar para github
 [] Confirmar que respondemos à primeira questão
 
 
@@ -149,7 +149,7 @@ Tendo o sumário das amostras em mãos, podemos calcular a distância. Geramos t
 
 ```{r Gerando amostras e registrando seus sumários}
 sample.size <- 200
-samples.count <- 100000
+samples.count <- 10000 #0
 
 mu.lambda.sampler <- function(sample.size, samples.count, mu.max, lambda.max) {
   lambda <- runif(samples.count, min=0, max=lambda.max)
@@ -210,10 +210,10 @@ Isto não é necessariamente um problema, porém: significa que podemos ter fila
 **Questão  2:** Teste a hipótese nula de que o tempo médio de atendimento é
 inferior à metade do tempo médio entre chegadas.
   
-**Resposta:** Vamos simular algumas utilizando os valores selecionados da seleção anterior. Para cada um dos cem valores selecionados, vamos gerar cem filas
+**Resposta:** Vamos simular algumas utilizando os valores selecionados da seleção anterior. Para cada um dos cem valores selecionados, vamos gerar várias filas
 
 ```{r Calculando tempo médio de atendimento e chegada}
-mean.times.simulation.count <- samples.count / best.results.count
+simulation.per.point.count <- samples.count / best.results.count
 
 queue.mean.times <- function(queue.obj) {
   list(
@@ -238,7 +238,7 @@ simulate.mean.times <- function(samples.count, sample.size, results, servers) {
   data.frame
 }
 
-mean.times <- simulate.mean.times(mean.times.simulation.count, sample.size, best.results, 2)
+mean.times <- simulate.mean.times(simulation.per.point.count, sample.size, best.results, 2)
 ```
 
 Quantas vezes o tempo médio de atendimento foi menor que metade do tempo médio de chegada? Isso é fácil de calcular:
@@ -248,3 +248,38 @@ sum(mean.times$service.time < mean.times$times.between.arrivals / 2)
 ```
 
 Em nossas dez mil simulações, não houve um caso sequer em que a hipótese nula foi observada. Assim, a hipótese nula é falsa para os valores de $\mu$ e $\lambda$ que selecionamos.
+
+
+**Questão 3:** Caso o hospital deseje que em 90% do tempo todos os pacientes
+na fila possam se sentar simultaneamente, quantas cadeiras seriam
+necessárias? Dica: para cada amostra da posteriori, simule uma fila
+e calcule a estatística desejada. Em seguida, construa um intervalo
+de credibilidade.
+
+**Resposta:** Podemos gerar várias filas e obter vários possíveis tamanhos máximos de fila:
+
+```{r Calculando tempo médio de atendimento e chegada}
+simulate.people.waiting <- function(samples.count, sample.size, results, servers) {
+  people.waiting = numeric(samples.count*nrow(results))
+  count = 1
+  for (i in 1:samples.count) {
+    for (j in 1:nrow(results)) {
+      result <- results[i,]
+      queue.obj <- queue.creator(sample.size, result$lambda, result$mu, servers)
+      people.waiting[count] <- max(queue.obj$queuelength_df$queuelength)
+      count <- count+1
+    }
+  }
+  people.waiting
+}
+
+people.waiting <- simulate.people.waiting(simulation.per.point.count, sample.size, best.results, 2)
+```
+
+Basta pegar 9 decis para descobrir qual o número de pessoas que será maior que 90% das filas que ocorram:
+
+```{r Que número permitiria ter todos sentados 90% do tempo?}
+quantile(people.waiting, 0.9)
+```
+
+Assim, por volta de 90 cadeiras deve ser suficiente para garantir que os pacientes estariam sentados 9 em cada 10 vezes.
