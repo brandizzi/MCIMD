@@ -149,12 +149,12 @@ Tendo o sumário das amostras em mãos, podemos calcular a distância. Geramos t
 
 ```{r Gerando amostras e registrando seus sumários}
 sample.size <- 200
-samples.count <- 10000 #0
+samples.count <- 100000
 
 mu.lambda.sampler <- function(sample.size, samples.count, mu.max, lambda.max) {
   lambda <- runif(samples.count, min=0, max=lambda.max)
   mu <- runif(samples.count, min=0, max=mu.max)
-  results <- future_map2_dfr(lambda, mu, ~queue.sampler(sample.size, .x, .y))
+  results <- map2_dfr(lambda, mu, ~queue.sampler(sample.size, .x, .y))
   results$mu <- mu
   results$lambda <- lambda
   results$distance <- as.numeric(map(split(results, 1:nrow(results)), ~distance(., y.obs)))
@@ -227,8 +227,8 @@ simulate.mean.times <- function(samples.count, sample.size, results, servers) {
     service.time=numeric(0),
     times.between.arrivals=numeric(0)
   )
-  for (i in 1:samples.count) {
-    for (j in 1:nrow(results)) {
+  for (i in 1:nrow(results)) {
+    for (j in 1:samples.count) {
       result <- results[i,]
       queue.obj <- queue.creator(sample.size, result$lambda, result$mu, servers)
       queue.means <- queue.mean.times(queue.obj)
@@ -256,24 +256,22 @@ necessárias? Dica: para cada amostra da posteriori, simule uma fila
 e calcule a estatística desejada. Em seguida, construa um intervalo
 de credibilidade.
 
-**Resposta:** Podemos gerar várias filas e obter vários possíveis tamanhos máximos de fila:
+**Resposta:** Podemos gerar várias filas e obter vários possíveis tamanhos de fila:
 
-```{r Calculando tempo médio de atendimento e chegada}
+```{r Simulando filas e pegando os tamanhos máximos}
 simulate.people.waiting <- function(samples.count, sample.size, results, servers) {
-  people.waiting = numeric(samples.count*nrow(results))
-  count = 1
-  for (i in 1:samples.count) {
-    for (j in 1:nrow(results)) {
+  people.waiting = numeric(0)
+  for (i in 1:nrow(results)) {
+    for (j in 1:samples.count) {
       result <- results[i,]
       queue.obj <- queue.creator(sample.size, result$lambda, result$mu, servers)
-      people.waiting[count] <- max(queue.obj$queuelength_df$queuelength)
-      count <- count+1
+      people.waiting <- c(people.waiting, queue.obj$queuelength_df$queuelength)
     }
   }
   people.waiting
 }
 
-people.waiting <- simulate.people.waiting(simulation.per.point.count, sample.size, best.results, 2)
+people.waiting <- simulate.people.waiting(100, sample.size, best.results, 2)
 ```
 
 Basta pegar 9 decis para descobrir qual o número de pessoas que será maior que 90% das filas que ocorram:
@@ -282,4 +280,10 @@ Basta pegar 9 decis para descobrir qual o número de pessoas que será maior que
 quantile(people.waiting, 0.9)
 ```
 
-Assim, por volta de 90 cadeiras deve ser suficiente para garantir que os pacientes estariam sentados 9 em cada 10 vezes.
+Assim, por volta de 52 cadeiras deve ser suficiente para garantir que os pacientes estariam sentados 9 em cada 10 vezes.
+
+**Questão 4:** Avalie se o tempo de espera reduziria caso houvesse duas filas de
+atendimento independentes (considerando os mesmos parâmetros
+estimados anteriormente - veja a figura acima).
+
+**Resposta:** Esta é uma questão cheia de nuances. Uma abordagem mais simplória seria criar duas filas com os mesmos parâmetros, mas apenas um atendente em cada. Embora aquém do ideal, pode dar resultados 
