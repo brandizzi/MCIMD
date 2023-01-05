@@ -51,7 +51,7 @@ bibliography: reference.bib
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, cache=T, message=F, warning=F, error=F)
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load("tidyverse", "queuecomputer", "ggplot2", "abc")
+pacman::p_load("tidyverse", "queuecomputer", "ggplot2", "abc", "simmer")
 options(scipen=0)
 require("furrr")
 
