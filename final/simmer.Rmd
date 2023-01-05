@@ -170,10 +170,11 @@ bank %>% get_mon_arrivals()
 #> 5 Customer4   38.27059 50.27059            12     TRUE           1
 ```
 
-```{r now with a queue}
+
+```{r our hospital with two counters}
 library(simmer)
 
-#set.seed(2222)
+set.seed(2222)
 res <- best.results[sample(1:nrow(best.results), 1),]
 lambda <- res$lambda
 mu <- res$mu
@@ -204,7 +205,132 @@ mean(dd4$waiting_time)
 res
 ```
 
-```{r The counter example}
+```{r now with two counters and two separated queies}
+library(simmer)
+
+#set.seed(2222)
+res <- best.results[sample(1:nrow(best.results), 1),]
+lambda <- res$lambda
+mu <- res$mu
+bank4 <- simmer()
+
+customer4 <-
+  trajectory("Customer's path") %>%
+  log_("Here I am") %>%
+  set_attribute("start_time", function() {now(bank4)}) %>%
+  select(c("counter1", "counter2"), policy = "shortest-queue") %>%
+  seize_selected() %>%  
+  log_(function() {paste("Waited: ", now(bank4) - get_attribute(bank4, "start_time"))}) %>%
+  timeout(function() rexp(1, mu)) %>%
+  release_selected() %>%
+  log_(function() {paste("Finished: ", now(bank4))})
+
+bank4 <-
+  simmer("bank4") %>%
+  add_resource("counter1", 1) %>%
+  add_resource("counter2", 1) %>%
+  add_generator("customer4", customer4, function() {c(rexp(200, lambda), -1)})
+
+bank4 %>% run(until = Inf)
+dd4 <- bank4 %>%
+  get_mon_arrivals() %>%
+  transform(waiting_time = end_time - start_time - activity_time)
+
+dd4
+mean(dd4$waiting_time)
+res
+```
+
+```{r now with two counters and two separated queies and parametrized}
+library(simmer)
+
+#set.seed(2222)
+res <- best.results[sample(1:nrow(best.results), 1),]
+lambda <- res$lambda
+mu <- res$mu
+bank4 <- simmer()
+.seize <- function(trj) select(trj, c("counter1", "counter2"), policy = "shortest-queue") %>%
+  seize_selected()
+.release <- function(trj) release_selected(trj)
+.add_resource <- function(env) add_resource(env, "counter1", 1) %>%
+  add_resource("counter2", 1)
+
+customer4 <-
+  trajectory("Customer's path") %>%
+  log_("Here I am") %>%
+  set_attribute("start_time", function() {now(bank4)}) %>%
+  .seize %>%  
+  log_(function() {paste("Waited: ", now(bank4) - get_attribute(bank4, "start_time"))}) %>%
+  timeout(function() rexp(1, mu)) %>%
+  .release %>%
+  log_(function() {paste("Finished: ", now(bank4))})
+
+bank4 <-
+  simmer("bank4") %>%
+  .add_resource %>%
+  add_generator("customer4", customer4, function() {c(rexp(200, lambda), -1)})
+
+bank4 %>% run(until = Inf)
+dd4 <- bank4 %>%
+  get_mon_arrivals() %>%
+  transform(waiting_time = end_time - start_time - activity_time)
+
+dd4
+mean(dd4$waiting_time)
+res
+```
+
+```{r now with two counters one queue and parametrized}
+library(simmer)
+
+set.seed(2222)
+res <- best.results[sample(1:nrow(best.results), 1),]
+lambda <- res$lambda
+mu <- res$mu
+bank4 <- simmer()
+.seize <- function(trj) seize(trj, "counter")
+.release <- function(trj) release(trj, "counter")
+.add_resource <- function(env) add_resource(env, "counter", 2)
+
+customer4 <-
+  trajectory("Customer's path") %>%
+  log_("Here I am") %>%
+  set_attribute("start_time", function() {now(bank4)}) %>%
+  .seize %>%  
+  log_(function() {paste("Waited: ", now(bank4) - get_attribute(bank4, "start_time"))}) %>%
+  timeout(function() rexp(1, mu)) %>%
+  .release %>%
+  log_(function() {paste("Finished: ", now(bank4))})
+
+bank4 <-
+  simmer("bank4") %>%
+  .add_resource %>%
+  add_generator("customer4", customer4, function() {c(rexp(200, lambda), -1)})
+
+bank4 %>% run(until = Inf)
+dd4 <- bank4 %>%
+  get_mon_arrivals() %>%
+  transform(waiting_time = end_time - start_time - activity_time)
+
+dd4
+mean(dd4$waiting_time)
+res
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r The counter example for reference}
 library(simmer)
 
 set.seed(1234)
