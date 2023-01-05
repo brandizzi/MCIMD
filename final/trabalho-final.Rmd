@@ -307,7 +307,7 @@ queue.simulator <- function(sample.size, lambda, mu, .seize, .release, .add_reso
     .add_resource %>%
     add_generator("patient", patient, function() {c(rexp(200, lambda), -1)})
 
-  hospital %>% run(until = Inf)
+  hospital %>% simmer::run(until = Inf)
   hospital %>%
     get_mon_arrivals() %>%
     transform(waiting_time = end_time - start_time - activity_time)
