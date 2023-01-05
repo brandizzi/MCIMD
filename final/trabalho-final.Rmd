@@ -377,3 +377,61 @@ summary(two.queues.wait.times)
 Ao menos nestas simulações, os tempos médios foram bem próximos, assim como os outros valores. Podemos presumir que ter mais de uma fila não faria diferença. Há algum sentido nisto: se temos apenas uma fila, atendimentos lentos têm seu tempo "dividido" entre todos os pacientes. Se temos duas filas, e uma fica mais lento, há também uma certa "distribuição" do tempo de espera, mas desta vez feita pelo próprio paciente.
 
 Note, porém, que nesta simulação não há a possibilidade de pacientes mudarem de fila. Se houver esta possibilidade, podemos obter resultados diferentes. Infelizmente, não conseguimos reproduzir este cenário ainda.
+
+**Questão 5:** O tamanho da fiia é um desestímulo aos pacientes. Ao ver uma
+fila grande, o paciente desiste do atendimento com certa
+probabilidade. Incorpore essa característica à sua simulação e
+estime quantas pessoas desestiram do atendimento no dia em que
+os dados foram coletados. Essa é uma atividade desfiadora!
+Justfique suas suposições.
+
+**Resposta:** A probabilidade de desistência de um paciente pode ser dado pela
+variável $D \sim Bernoulli(p)$. $p$, no caso, é dependente do tamanho da fila:
+quanto maior a fila, maior a probabilidade de desistência, e portanto maior o $p$.
+
+Para filas menores, a probabilidade precisa ser praticamente nula, enquanto certos valores extremos a torna especialmente alta. Isto pode ser representado por uma função sigmoide, como a função logística. $p$ então poderia ser definido, para fins de simulação, como
+
+$$
+p = \frac{1}{1 - e^{l-l_0}}
+$$
+Onde $l$ é o tamanho da fila, e $l_0$ é a média da função logística.
+
+$l_0$ é um valor empírico: precisaríamos medir a impaciência dos pacientes. Ainda assim, podemos adotar algum valor plausível apenas para fins de simulação. Minha sugestão seria utilizar o número de assentos utilizados na Questão 3 como referência. Apenas a fim de exemplo, definamos que, quando há duas pessoas sem assento, as desistências se tornam mais prováveis (isto é, $l_0 = n_{assentos} + 2$). Em código, seria algo assim:
+
+```{r Função que calcula a chance de uma desistência dado o tamanho da fila}
+uncomfortable.unseated <- 2
+uncomfortable.queue.size <- seats.count + uncomfortable.unseated
+leave.probability <- function(queue.size) 1/(1+exp(-queue.size+uncomfortable.queue.size))
+```
+
+Vamos simular a situação em que o paciente chega, observa o tamanho da fila e imediatamente desiste, ou não, de esperar. (Isto não inclui a situação em que o paciente já estava esperando e desiste.) Novamente, `simmer` pode nos ajudar a simular este cenário. A função `leave()` nos permite decidir abandonar uma trajetória. No nosso caso 
+
+```{r Simulando dois atendentes e fila única}
+# Simulando nossa já conhecida fila M/M/2
+leaving.count <- 0
+decide.on.leaving <- function(queue.count) {
+  should.leave <- rbernoulli(1, leave.probability(queue.count))
+  leaving.count <<- leaving.count + as.numeric(should.leave)
+  should.leave
+}
+
+leaving.queue.simulator <- function(sample.size, lambda, mu) {
+  queue.simulator(
+    sample.size, lambda, mu,
+    function(trj, env) {
+      trj %>%
+        leave(function() decide.on.leaving(get_queue_count(env, "counter"))) %>%
+        seize("counter")
+    },
+    function(trj, env) trj %>% release("counter"),
+    function(env) env %>% add_resource("counter", 2)
+  )
+}
+
+# This simulation proved to be especially slow with simmer. Due to time
+# constraints, I'll be generating only one sample per lambda/mu pair.
+leaving.queue.wait.times <- simulate.mean.wait.times(
+  leaving.queue.simulator, samples.count = 2, sample.size = 10, results=slice_min( best.results, n=5, order_by = distance)
+)
+summary(leaving.queue.wait.times)
+```
