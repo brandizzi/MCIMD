@@ -298,12 +298,9 @@ queue.simulator <- function(sample.size, lambda, mu, .seize, .release, .add_reso
   patient <-
     trajectory("Patient's path") %>%
     set_attribute("start_time", function() {now(hospital)}) %>%
-    #log_(function() paste("Arrived at: ", get_attribute(hospital, "start_time"))) %>%
-    .seize %>%  
-    #log_(function() paste("Waited: ", now(hospital) - get_attribute(hospital, "start_time"))) %>%
+    .seize(hospital) %>%
     timeout(function() rexp(1, mu)) %>%
-    .release #%>%
-    #log_(function() {paste("Finished: ", now(hospital))})
+    .release(hospital)
 
   hospital <-
     simmer("hospital") %>%
@@ -342,9 +339,9 @@ Aqui, vamos simular nossa fila como definida antes (uma fila para dois antendent
 mm2.simulator <- function(sample.size, lambda, mu) {
   queue.simulator(
     sample.size, lambda, mu,
-    function(trj) seize(trj, "counter"),
-    function(trj) release(trj, "counter"),
-    function(env) add_resource(env, "counter", 2)
+    function(trj, env) trj %>% seize("counter"),
+    function(trj, env) trj %>% release("counter"),
+    function(env) env %>% add_resource("counter", 2)
   )
 }
 
@@ -356,32 +353,19 @@ Agora, simulemos duas filas, em que os pacientes escolhem a menor:
 
 ```{r Simulando dois atendentes e fila única}
 # Simulando nossa já conhecida fila M/M/2
-one.queue.simulator <- function(sample.size, lambda, mu) {
-  queue.simulator(
-    sample.size, lambda, mu,
-    function(trj) seize(trj, "counter"),
-    function(trj) release(trj, "counter"),
-    function(env) add_resource(env, "counter", 2)
-  )
-}
-
-one.queue.wait.times <- simulate.mean.wait.times(10, sample.size, best.results, one.queue.simulator)
-summary(one.queue.wait.times)
-```
-
-```{r Simulando dois atendentes e fila única}
-# Simulando nossa já conhecida fila M/M/2
 two.queues.simulator <- function(sample.size, lambda, mu) {
   queue.simulator(
     sample.size, lambda, mu,
-    function(trj) {
-      select(trj, c("counter1", "counter2"), policy = "shortest-queue") %>%
-      seize_selected()
+    function(trj, env) {
+      trj %>%
+        select(c("counter1", "counter2"), policy = "shortest-queue") %>%
+        seize_selected()
     },
-    function(trj) release_selected(trj),
+    function(trj, env) trj %>% release_selected(),
     function(env) {
-      add_resource(env, "counter1", 1) %>%
-      add_resource("counter2", 1)
+      env %>%
+        add_resource("counter1", 1) %>%
+        add_resource("counter2", 1)
     }
   )
 }
