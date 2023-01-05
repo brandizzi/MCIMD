@@ -318,6 +318,49 @@ res
 ```
 
 
+```{r our hospital with two counters now with giving up}
+library(simmer)
+
+set.seed(2222)
+res <- best.results[sample(1:nrow(best.results), 1),]
+lambda <- res$lambda
+mu <- res$mu
+bank4 <- simmer()
+
+counter <- 0
+
+leaving.trajectory <- trajectory() %>% set_attribute("left", function() 1)
+customer4 <-
+  trajectory("Customer's path") %>%
+  log_("Here I am") %>%
+  set_attribute("start_time", function() {now(bank4)}) %>%
+  leave(function() {
+    if (get_queue_count(bank4, "counter3") > 10) {
+      counter <<- counter+1
+      return(TRUE)
+    }
+    return(FALSE)
+    }) %>%
+  seize("counter3") %>%
+  log_(function() {paste("Waited: ", now(bank4) - get_attribute(bank4, "start_time"))}) %>%
+  timeout(function() rexp(1, mu)) %>%
+  release("counter3") %>%
+  log_(function() {paste("Finished: ", now(bank4))})
+
+bank4 <-
+  simmer("bank4") %>%
+  add_resource("counter3", 2) %>%  # Que can define the number of resources here
+  add_generator("customer4", customer4, function() {c(rexp(200, lambda), -1)})
+
+bank4 %>% run(until = Inf)
+dd4 <- bank4 %>%
+  get_mon_arrivals() %>%
+  transform(waiting_time = end_time - start_time - activity_time)
+
+dd4
+mean(dd4$waiting_time)
+res
+```
 
 
 
