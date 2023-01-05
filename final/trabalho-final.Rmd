@@ -278,10 +278,10 @@ people.waiting <- simulate.people.waiting(100, sample.size, best.results, 2)
 Basta pegar 9 decis para descobrir qual o número de pessoas que será maior que 90% das filas que ocorram:
 
 ```{r Que número permitiria ter todos sentados 90% do tempo?}
-quantile(people.waiting, 0.9)
+(seats.count <- quantile(people.waiting, 0.9))
 ```
 
-Assim, por volta de 52 cadeiras deve ser suficiente para garantir que os pacientes estariam sentados 9 em cada 10 vezes.
+Assim, por volta de 62 cadeiras deve ser suficiente para garantir que os pacientes estariam sentados 9 em cada 10 vezes.
 
 **Questão 4:** Avalie se o tempo de espera reduziria caso houvesse duas filas de
 atendimento independentes (considerando os mesmos parâmetros
