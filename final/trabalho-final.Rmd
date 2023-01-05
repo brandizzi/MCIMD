@@ -19,6 +19,7 @@ always_allow_html: yes
 editor_options:
   markdown:
     wrap: 72
+bibliography: reference.bib  
 ---
 
 ```{=tex}
@@ -145,11 +146,11 @@ time.between.arrivals.0 <- 24*60 / 200
 ```
 
 Geremos então amostras com $\lambda \sim U(0, 2\lambda_0)$ e $\mu \sim N(0, 2\mu_0)$. A distribuição unitária, assim como o intervalo utilizado, são escolhas arbitrárias que podemos ajustar.
-Tendo o sumário das amostras em mãos, podemos calcular a distância. Geramos também mais uma coluna, com um valor de "proximidade" variando de 0 a 1, crescendo à medida em que a distância diminui:
+Tendo o sumário das amostras em mãos, podemos calcular a distância. Geramos também mais uma coluna, com um valor de "proximidade"@simmer variando de 0 a 1, crescendo à medida em que a distância diminui:
 
 ```{r Gerando amostras e registrando seus sumários}
 sample.size <- 200
-samples.count <- 100000
+samples.count <- 10000
 
 mu.lambda.sampler <- function(sample.size, samples.count, mu.max, lambda.max) {
   lambda <- runif(samples.count, min=0, max=lambda.max)
@@ -286,4 +287,109 @@ Assim, por volta de 52 cadeiras deve ser suficiente para garantir que os pacient
 atendimento independentes (considerando os mesmos parâmetros
 estimados anteriormente - veja a figura acima).
 
-**Resposta:** Esta é uma questão cheia de nuances. Uma abordagem mais simplória seria criar duas filas com os mesmos parâmetros, mas apenas um atendente em cada. Embora aquém do ideal, pode dar resultados 
+**Resposta:** Esta é uma questão cheia de nuances. Uma abordagem mais simplória seria criar duas filas com os mesmos parâmetros, mas apenas um atendente em cada, e atribuir metade dos pacientes a cada uma. O problema é que o comportamento óbvio do paciente (escollher a menor fila) não é modelado.
+
+Até onde vi, `queuecomputer` não suporta escolher a maneira de escolher a fila. Por isso, para este exercício, adotei `simmer` [@Simmer]. Primeiro, vamos criar uma função que simule uma fila com dois atendentes:
+
+```{r Simulador de filas utilizando `simmer`}
+queue.simulator <- function(sample.size, lambda, mu, .seize, .release, .add_resource) {
+  hospital <- simmer()
+
+  patient <-
+    trajectory("Patient's path") %>%
+    set_attribute("start_time", function() {now(hospital)}) %>%
+    #log_(function() paste("Arrived at: ", get_attribute(hospital, "start_time"))) %>%
+    .seize %>%  
+    #log_(function() paste("Waited: ", now(hospital) - get_attribute(hospital, "start_time"))) %>%
+    timeout(function() rexp(1, mu)) %>%
+    .release #%>%
+    #log_(function() {paste("Finished: ", now(hospital))})
+
+  hospital <-
+    simmer("hospital") %>%
+    .add_resource %>%
+    add_generator("patient", patient, function() {c(rexp(200, lambda), -1)})
+
+  hospital %>% run(until = Inf)
+  hospital %>%
+    get_mon_arrivals() %>%
+    transform(waiting_time = end_time - start_time - activity_time)
+}
+```
+
+Com essa função, podemos simular várias filas e ver o tempo médio de espera. Para isto, vamos usar o algoritmo abaixo, baseado nos exemplos de [@Simmer2]:
+
+```{r Simulando filas com nosso novo simulador}
+simulate.mean.wait.times <- function(samples.count, sample.size, results, simulator) {
+  mean.wait.times <- numeric(0)
+  for (i in 1:nrow(results)) {
+    for (j in 1:samples.count) {
+      result <- results[i,]
+      lambda <- result$lambda
+      mu <- result$mu
+      simulation <- simulator(sample.size, lambda, mu)
+      mean.wait.times <- c(mean.wait.times, mean(simulation$waiting_time))
+    }
+  }
+  mean.wait.times
+}
+```
+
+Aqui, vamos simular nossa fila como definida antes (uma fila para dois antendentes):
+
+```{r Simulando dois atendentes e fila única}
+# Simulando nossa já conhecida fila M/M/2
+mm2.simulator <- function(sample.size, lambda, mu) {
+  queue.simulator(
+    sample.size, lambda, mu,
+    function(trj) seize(trj, "counter"),
+    function(trj) release(trj, "counter"),
+    function(env) add_resource(env, "counter", 2)
+  )
+}
+
+wait.times <- simulate.mean.wait.times(10, sample.size, best.results, mm2.simulator)
+summary(wait.times)
+```
+
+Agora, simulemos duas filas, em que os pacientes escolhem a menor:
+
+```{r Simulando dois atendentes e fila única}
+# Simulando nossa já conhecida fila M/M/2
+one.queue.simulator <- function(sample.size, lambda, mu) {
+  queue.simulator(
+    sample.size, lambda, mu,
+    function(trj) seize(trj, "counter"),
+    function(trj) release(trj, "counter"),
+    function(env) add_resource(env, "counter", 2)
+  )
+}
+
+one.queue.wait.times <- simulate.mean.wait.times(10, sample.size, best.results, one.queue.simulator)
+summary(one.queue.wait.times)
+```
+
+```{r Simulando dois atendentes e fila única}
+# Simulando nossa já conhecida fila M/M/2
+two.queues.simulator <- function(sample.size, lambda, mu) {
+  queue.simulator(
+    sample.size, lambda, mu,
+    function(trj) {
+      select(trj, c("counter1", "counter2"), policy = "shortest-queue") %>%
+      seize_selected()
+    },
+    function(trj) release_selected(trj),
+    function(env) {
+      add_resource(env, "counter1", 1) %>%
+      add_resource("counter2", 1)
+    }
+  )
+}
+
+two.queues.wait.times <- simulate.mean.wait.times(10, sample.size, best.results, two.queues.simulator)
+summary(two.queues.wait.times)
+```
+
+Ao menos nestas simulações, os tempos médios foram bem próximos, assim como os outros valores. Podemos presumir que ter mais de uma fila não faria diferença. Há algum sentido nisto: se temos apenas uma fila, atendimentos lentos têm seu tempo "dividido" entre todos os pacientes. Se temos duas filas, e uma fica mais lento, há também uma certa "distribuição" do tempo de espera, mas desta vez feita pelo próprio paciente.
+
+Note, porém, que nesta simulação não há a possibilidade de pacientes mudarem de fila. Se houver esta possibilidade, podemos obter resultados diferentes. Infelizmente, não conseguimos reproduzir este cenário ainda.
